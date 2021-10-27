@@ -19,22 +19,45 @@ fn import_word_list() -> Vec<String> {
         .collect()
 }
 
-fn generate_pass(n_words: u32, prefix: String, suffix: String) -> String {
-    let word_list = import_word_list();
-    let mut rng = rand::thread_rng();
-    let mut pass = prefix.clone();
-    for _ in 0..n_words {
-        let r: usize = rng.gen::<usize>() % word_list.len();
-        let mut tmp_str = word_list[r].clone();
-        if let Some(r) = tmp_str.get_mut(0..1) {
-            r.make_ascii_uppercase();
-        }
-        pass += &tmp_str.to_string();
-    }
-    pass += &suffix;
-    
-    pass
+struct PassGen {
+    word_list: Vec<String>,
+    rng: rand::rngs::ThreadRng,
 }
+
+impl PassGen {
+    pub fn new() -> Self {
+        Self {
+            word_list: import_word_list(),
+            rng: rand::thread_rng(),
+        }
+    }
+
+    fn generate_words(&mut self, n_words: u32) -> String {
+        let mut pass = String::new();
+        for _ in 0..n_words {
+            let i = self.rng.gen::<usize>() % self.word_list.len();
+            let mut tmp_str = self.word_list[i].clone();
+            if let Some(r) = tmp_str.get_mut(0..1) {
+                r.make_ascii_uppercase();
+            }
+            pass += &tmp_str;
+        }
+        pass
+    }
+
+    pub fn generate_pass(&mut self, n_words: u32, prefix: Option<String>, suffix: Option<String>) -> String {
+        let mut pass = String::new();
+        if let Some(s) = prefix {
+            pass += &s;
+        }
+        pass += &self.generate_words(n_words);
+        if let Some(s) = suffix {
+            pass += &s;
+        }
+        pass
+    }
+}
+
 
 fn parse_args() -> clap::ArgMatches<'static> {
     clap::App::new("genpwd")
@@ -57,6 +80,12 @@ fn parse_args() -> clap::ArgMatches<'static> {
             .help("Fixed suffix after the generated password")
             .required(false)
             .default_value("."))
+        .arg(clap::Arg::with_name("qrcode")
+            .short("q")
+            .long("qr-code")
+            .help("Generate and display a QR code representation of the generated pass")
+            .required(false)
+            .default_value("."))
         .get_matches()
 }
     
@@ -67,10 +96,12 @@ fn main() {
         .unwrap()
         .parse::<u32>()
         .unwrap();
-    let pass = generate_pass(
+
+    let mut pwd_gen = PassGen::new();
+    let pass = pwd_gen.generate_pass(
         words,
-        args.value_of("prefix").unwrap().replace(" ", "_"),
-        args.value_of("suffix").unwrap().replace(" ", "_")
+        Some(args.value_of("prefix").unwrap().replace(" ", "_")),
+        Some(args.value_of("suffix").unwrap().replace(" ", "_")),
     );
     println!("{}", pass);
 }
