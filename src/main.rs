@@ -3,11 +3,9 @@ use std::io::*;
 use std::fs::File;
 use rand::Rng;
 use std::path::Path;
+use sdl2::event::Event;
 use clap;
 use qr_code;
-use sdl2::event::Event;
-//use sdl2::image::LoadTexture;
-use sdl2::keyboard::Keycode;
 
 fn import_word_list() -> Vec<String> {
     let path = Path::new("words_alpha.txt");
@@ -50,7 +48,7 @@ impl PassGen {
         pass
     }
 
-    pub fn generate_pass(&mut self, n_words: u32, prefix: &Option<String>, suffix: &Option<String>) -> String {
+    pub fn generate_pass(&mut self, n_words: u32, prefix: Option<String>, suffix: Option<String>) -> String {
         let mut pass = String::new();
         if let Some(s) = prefix {
             pass += &s;
@@ -87,25 +85,16 @@ fn gen_qr_code(pass: &str) -> qr_code::QrCode {
 }
 
 fn show_qr_code(qc: &qr_code::QrCode) {
-    let qc_v: Vec<u8> = qc.to_vec()
-        .iter()
-        .map(|val| {
-            match *val {
-                true => 0u8,
-                false => 255u8,
-            }
-        })
-        .collect();
+    let mut qc_v = Vec::new();
+    qc.to_bmp().write(&mut qc_v).unwrap();
 
     let sdl_context = sdl2::init().unwrap();
     let video_subsystem = sdl_context.video().unwrap();
-    //let _image_context = sdl2::image::init().unwrap();
     let window = video_subsystem
-        .window("rust-sdl2 demo: Video", 800, 600)
+        .window("pwdgen", 320, 320)
         .position_centered()
         .build()
         .map_err(|e| e.to_string()).unwrap();
-
 
     let mut canvas = window
         .into_canvas()
@@ -118,7 +107,6 @@ fn show_qr_code(qc: &qr_code::QrCode) {
         .unwrap()
         .as_texture(&texture_creator)
         .unwrap();
-    //let texture = texture_creator.load_texture(qc_bmp).unwrap();
 
     canvas.copy(&texture, None, None).unwrap();
     canvas.present();
@@ -126,11 +114,7 @@ fn show_qr_code(qc: &qr_code::QrCode) {
     'mainloop: loop {
         for event in sdl_context.event_pump().unwrap().poll_iter() {
             match event {
-                Event::Quit { .. }
-                | Event::KeyDown {
-                    keycode: Option::Some(Keycode::Escape),
-                    ..
-                } => break 'mainloop,
+                Event::Quit { .. } => break 'mainloop,
                 _ => {}
             }
         }
@@ -179,14 +163,14 @@ fn main() {
         .unwrap()
         .parse::<u32>()
         .unwrap();
-
-    let mut pwd_gen = PassGen::new();
     let mut pass: String;
+    let mut pwd_gen = PassGen::new();
+
     loop {
         pass = pwd_gen.generate_pass(
             words,
-            &Some(args.value_of("prefix").unwrap().replace(" ", "_")),
-            &Some(args.value_of("suffix").unwrap().replace(" ", "_")),
+            if args.is_present("prefix") {Some(args.value_of("prefix").unwrap().replace(" ", "_"))} else {None},
+            if args.is_present("suffix") {Some(args.value_of("suffix").unwrap().replace(" ", "_"))} else {None},
         );
         println!("{}", pass);
         if !args.is_present("interactive") || pwd_gen.get_user_input() {
