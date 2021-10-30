@@ -1,14 +1,16 @@
 use std::io;
 use std::io::*;
 use std::fs::File;
-use rand::Rng;
 use std::path::Path;
+use std::collections::HashMap;
+use rand::Rng;
 use sdl2::event::Event;
 use clap;
 use qr_code;
 
 fn import_word_list() -> Vec<String> {
-    let path = Path::new("words_alpha.txt");
+    let path = format!("{}/.config/genpwd/words_alpha.txt", std::env::var("HOME").unwrap());
+    let path = Path::new(&path);
     let display = path.display();
     let file = match File::open(&path) {
         Err(why) => panic!("couldn't open {}: {}", display, why),
@@ -20,6 +22,43 @@ fn import_word_list() -> Vec<String> {
         .lines()
         .map(|word| word.unwrap())
         .collect()
+}
+
+fn parse_config() -> HashMap<String, String> {
+    let path = format!("{}/.config/genpwd/config", std::env::var("HOME").unwrap());
+    let path = Path::new(&path);
+    let display = path.display();
+    let file = match File::open(&path) {
+        Err(why) => panic!("couldn't open {}: {}", display, why),
+        Ok(file) => file,
+    };
+
+    let buffered = BufReader::new(file);
+    let lines : Vec<String> = buffered
+        .lines()
+        .map(|word| word.unwrap()) //.split("=").collect())
+        .collect();
+    
+    let key_vals : Vec<Vec<String>> = lines
+        .into_iter()
+        .map(|word| word.split("=").map(|s| String::from(s)).collect())
+        .collect();
+
+    let mut hm = HashMap::new();
+    for (idx, key_val) in key_vals.iter().enumerate() {
+        if key_val.len() != 2 {
+            panic!("Malformed config on line {}", idx);
+        }
+        
+        let key = String::from(key_val[0].trim().clone());
+        let val = String::from(key_val[1].trim().clone());
+        if hm.contains_key(&key) {
+            panic!("Double config on line {}", idx);
+        }
+        hm.insert(key, val);
+    }
+
+    hm
 }
 
 struct PassGen {
@@ -48,7 +87,7 @@ impl PassGen {
         pass
     }
 
-    pub fn generate_pass(&mut self, n_words: u32, prefix: Option<String>, suffix: Option<String>) -> String {
+    pub fn generate_pass(&mut self, n_words: u32, prefix: &Option<String>, suffix: &Option<String>) -> String {
         let mut pass = String::new();
         if let Some(s) = prefix {
             pass += &s;
@@ -135,13 +174,11 @@ fn parse_args() -> clap::ArgMatches<'static> {
         .arg(clap::Arg::with_name("prefix")
             .long("prefix")
             .help("Fixed prefix before the generated password")
-            .required(false)
-            .default_value("131"))
+            .required(false))
         .arg(clap::Arg::with_name("suffix")
             .long("suffix")
             .help("Fixed suffix after the generated password")
-            .required(false)
-            .default_value("."))
+            .required(false))
         .arg(clap::Arg::with_name("qrcode")
             .short("q")
             .long("qr-code")
@@ -157,6 +194,16 @@ fn parse_args() -> clap::ArgMatches<'static> {
 }
     
 fn main() {
+    // fn get_somefix(args: &ArgMatches, s: &str) -> Option<String> {
+    //     let prefix = if args.is_present("prefix") {
+    //         return Some(args.value_of("prefix").unwrap().replace(" ", "_"));
+    //     }
+    //     else if config.contains_key("PREFIX") {
+    //         return Option::from(config.get("PREFIX")); // Already wrapped in an Option
+    //     }
+    //     None
+    // }
+
     let args = parse_args();
     let words = args
         .value_of("n_words")
@@ -165,13 +212,33 @@ fn main() {
         .unwrap();
     let mut pass: String;
     let mut pwd_gen = PassGen::new();
+    let config = parse_config();
+
+
+    let prefix = if args.is_present("prefix") {
+        Some(args.value_of("prefix").unwrap().replace(" ", "_"))
+    }
+    else if config.contains_key("PREFIX") {
+        let val = config.get("PREFIX").unwrap();
+        Some(String::from(val)) // Already wrapped in an Option
+    }
+    else {
+        None
+    };
+
+    let suffix = if args.is_present("suffix") {
+        Some(args.value_of("suffix").unwrap().replace(" ", "_"))
+    }
+    else if config.contains_key("SUFFIX") {
+        let val = config.get("SUFFIX").unwrap();
+        Some(String::from(val))
+    }
+    else {
+        None
+    };
 
     loop {
-        pass = pwd_gen.generate_pass(
-            words,
-            if args.is_present("prefix") {Some(args.value_of("prefix").unwrap().replace(" ", "_"))} else {None},
-            if args.is_present("suffix") {Some(args.value_of("suffix").unwrap().replace(" ", "_"))} else {None},
-        );
+        pass = pwd_gen.generate_pass(words, &prefix, &suffix);
         println!("{}", pass);
         if !args.is_present("interactive") || pwd_gen.get_user_input() {
             break;
