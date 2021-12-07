@@ -16,3 +16,6 @@ features = ["bmp"]
 [dependencies.sdl2]
 version = "0.35.1"
 features = ["image"]
+
+[features]
+no-qr-code = []

@@ -4,8 +4,12 @@ use std::fs::File;
 use std::path::Path;
 use std::collections::HashMap;
 use rand::Rng;
-use sdl2::event::Event;
 use clap;
+
+#[cfg(not(feature = "no-qr-code"))]
+use sdl2::event::Event;
+
+#[cfg(not(feature = "no-qr-code"))]
 use qr_code;
 
 fn import_word_list() -> Vec<String> {
@@ -118,11 +122,13 @@ impl PassGen {
     }
 }
 
+#[cfg(not(feature = "no-qr-code"))]
 fn gen_qr_code(pass: &str) -> qr_code::QrCode {
     let qc = qr_code::QrCode::new(pass);
     qc.unwrap()
 }
 
+#[cfg(not(feature = "no-qr-code"))]
 fn show_qr_code(qc: &qr_code::QrCode) {
     let mut qc_v = Vec::new();
     qc.to_bmp().write(&mut qc_v).unwrap();
@@ -161,7 +167,7 @@ fn show_qr_code(qc: &qr_code::QrCode) {
 }
 
 fn parse_args() -> clap::ArgMatches<'static> {
-    clap::App::new("genpwd")
+    let mut arg_build = clap::App::new("genpwd")
         .version("1.0")
         .author("Gustaf Borgstrom <gustaf.borgstrom@koltrast.se>")
         .about("Generate easy to comprehend, hard to crack passwords.")
@@ -179,31 +185,27 @@ fn parse_args() -> clap::ArgMatches<'static> {
             .long("suffix")
             .help("Fixed suffix after the generated password")
             .required(false))
-        .arg(clap::Arg::with_name("qrcode")
-            .short("q")
-            .long("qr-code")
-            .help("Generate and display a QR code representation of the generated pass")
-            .required(false)
-            .takes_value(false))
         .arg(clap::Arg::with_name("interactive")
             .short("i")
             .long("interactive")
             .help("Interactive response of accepting the generated pass")
-            .required(false))
-        .get_matches()
+            .required(false));
+
+    #[cfg(not(feature = "no-qr-code"))]
+    {
+        arg_build = arg_build
+            .arg(clap::Arg::with_name("qrcode")
+            .short("q")
+            .long("qr-code")
+            .help("Generate and display a QR code representation of the generated pass")
+            .required(false)
+            .takes_value(false));
+    }
+
+    arg_build.get_matches()
 }
     
 fn main() {
-    // fn get_somefix(args: &ArgMatches, s: &str) -> Option<String> {
-    //     let prefix = if args.is_present("prefix") {
-    //         return Some(args.value_of("prefix").unwrap().replace(" ", "_"));
-    //     }
-    //     else if config.contains_key("PREFIX") {
-    //         return Option::from(config.get("PREFIX")); // Already wrapped in an Option
-    //     }
-    //     None
-    // }
-
     let args = parse_args();
     let words = args
         .value_of("n_words")
@@ -246,6 +248,7 @@ fn main() {
         pass.clear();
     }
 
+    #[cfg(not(feature = "no-qr-code"))]
     if args.is_present("qrcode") {
         let qc = gen_qr_code(&pass);
         show_qr_code(&qc);
