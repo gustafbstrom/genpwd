@@ -4,7 +4,7 @@ use std::fs::File;
 use std::path::Path;
 use std::collections::HashMap;
 use rand::Rng;
-use clap;
+use clap::{self,ArgMatches};
 
 #[cfg(feature = "default")]
 use sdl2::event::Event;
@@ -12,9 +12,9 @@ use sdl2::event::Event;
 #[cfg(feature = "default")]
 use qr_code;
 
-fn import_word_list() -> Vec<String> {
-    let path = format!("{}/.config/genpwd/words_alpha.txt", std::env::var("HOME").unwrap());
-    let path = Path::new(&path);
+fn import_word_list(path: &str) -> Vec<String> {
+    let path = format!("{}/wordlist", path);
+    let path = Path::new(path.as_str());
     let display = path.display();
     let file = match File::open(&path) {
         Err(why) => panic!("couldn't open {}: {}", display, why),
@@ -28,12 +28,12 @@ fn import_word_list() -> Vec<String> {
         .collect()
 }
 
-fn parse_config() -> HashMap<String, String> {
-    let path = format!("{}/.config/genpwd/config", std::env::var("HOME").unwrap());
+fn parse_config(path: &str) -> HashMap<String, String> {
+    let path = format!("{}/config", path);
     let path = Path::new(&path);
     let display = path.display();
     let file = match File::open(&path) {
-        Err(why) => panic!("couldn't open {}: {}", display, why),
+        Err(why) => return HashMap::new(),
         Ok(file) => file,
     };
 
@@ -71,9 +71,9 @@ struct PassGen {
 }
 
 impl PassGen {
-    pub fn new() -> Self {
+    pub fn new(wl_path: &str) -> Self {
         Self {
-            word_list: import_word_list(),
+            word_list: import_word_list(wl_path),
             rng: rand::thread_rng(),
         }
     }
@@ -185,6 +185,10 @@ fn parse_args() -> clap::ArgMatches<'static> {
             .long("suffix")
             .help("Fixed suffix after the generated password")
             .required(false))
+        .arg(clap::Arg::with_name("shared_path")
+            .long("shared-path")
+            .help("Specifies where to find shared files")
+            .required(false))
         .arg(clap::Arg::with_name("interactive")
             .short("i")
             .long("interactive")
@@ -206,6 +210,20 @@ fn parse_args() -> clap::ArgMatches<'static> {
 }
     
 fn main() {
+    fn get_conf_val(args: &ArgMatches,
+                    config: &HashMap<String, String>,
+                    key: &str) -> Option<String> {
+        if args.is_present(key) {
+            Some(args.value_of(key).unwrap().replace(" ", "_"))
+        }
+        else if config.contains_key(key.to_uppercase().as_str()) {
+            let val = config.get(key.to_uppercase().as_str()).unwrap();
+            Some(String::from(val)) // Already wrapped in an Option
+        }
+        else {
+            None
+        }
+    }
     let args = parse_args();
     let words = args
         .value_of("n_words")
@@ -213,31 +231,16 @@ fn main() {
         .parse::<u32>()
         .unwrap();
     let mut pass: String;
-    let mut pwd_gen = PassGen::new();
-    let config = parse_config();
-
-
-    let prefix = if args.is_present("prefix") {
-        Some(args.value_of("prefix").unwrap().replace(" ", "_"))
+    let shared_path = format!("{}/.config/genpwd",
+                       std::env::var("HOME").unwrap());
+    let config = parse_config(shared_path.as_str());
+    let prefix = get_conf_val(&args, &config, "prefix");
+    let suffix = get_conf_val(&args, &config, "suffix");
+    let mut wl_path = get_conf_val(&args, &config, "shared_path");
+    if wl_path.is_none() {
+        wl_path = Some(shared_path);
     }
-    else if config.contains_key("PREFIX") {
-        let val = config.get("PREFIX").unwrap();
-        Some(String::from(val)) // Already wrapped in an Option
-    }
-    else {
-        None
-    };
-
-    let suffix = if args.is_present("suffix") {
-        Some(args.value_of("suffix").unwrap().replace(" ", "_"))
-    }
-    else if config.contains_key("SUFFIX") {
-        let val = config.get("SUFFIX").unwrap();
-        Some(String::from(val))
-    }
-    else {
-        None
-    };
+    let mut pwd_gen = PassGen::new(wl_path.unwrap().as_str());
 
     loop {
         pass = pwd_gen.generate_pass(words, &prefix, &suffix);
