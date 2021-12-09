@@ -6,10 +6,10 @@ use std::collections::HashMap;
 use rand::Rng;
 use clap;
 
-#[cfg(not(feature = "no-qr-code"))]
+#[cfg(feature = "default")]
 use sdl2::event::Event;
 
-#[cfg(not(feature = "no-qr-code"))]
+#[cfg(feature = "default")]
 use qr_code;
 
 fn import_word_list() -> Vec<String> {
@@ -122,13 +122,13 @@ impl PassGen {
     }
 }
 
-#[cfg(not(feature = "no-qr-code"))]
+#[cfg(feature = "default")]
 fn gen_qr_code(pass: &str) -> qr_code::QrCode {
     let qc = qr_code::QrCode::new(pass);
     qc.unwrap()
 }
 
-#[cfg(not(feature = "no-qr-code"))]
+#[cfg(feature = "default")]
 fn show_qr_code(qc: &qr_code::QrCode) {
     let mut qc_v = Vec::new();
     qc.to_bmp().write(&mut qc_v).unwrap();
@@ -191,7 +191,7 @@ fn parse_args() -> clap::ArgMatches<'static> {
             .help("Interactive response of accepting the generated pass")
             .required(false));
 
-    #[cfg(not(feature = "no-qr-code"))]
+    #[cfg(feature = "default")]
     {
         arg_build = arg_build
             .arg(clap::Arg::with_name("qrcode")
@@ -248,7 +248,7 @@ fn main() {
         pass.clear();
     }
 
-    #[cfg(not(feature = "no-qr-code"))]
+    #[cfg(feature = "default")]
     if args.is_present("qrcode") {
         let qc = gen_qr_code(&pass);
         show_qr_code(&qc);
