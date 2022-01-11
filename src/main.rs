@@ -31,10 +31,9 @@ fn import_word_list(path: &str) -> Vec<String> {
 fn parse_config(path: &str) -> HashMap<String, String> {
     let path = format!("{}/config", path);
     let path = Path::new(&path);
-    let display = path.display();
     let file = match File::open(&path) {
-        Err(why) => return HashMap::new(),
         Ok(file) => file,
+        Err(_) => return HashMap::new(),
     };
 
     let buffered = BufReader::new(file);
