@@ -165,13 +165,13 @@ fn show_qr_code(qc: &qr_code::QrCode) {
     }
 }
 
-fn parse_args() -> clap::ArgMatches<'static> {
+fn parse_args() -> clap::ArgMatches {
     let mut arg_build = clap::App::new("genpwd")
         .version("1.0")
         .author("Gustaf Borgstrom <gustaf.borgstrom@koltrast.se>")
         .about("Generate easy to comprehend, hard to crack passwords.")
         .arg(clap::Arg::with_name("n_words")
-            .short("w")
+            .short('w')
             .long("words")
             .help("Number of words to include")
             .required(false)
@@ -191,7 +191,7 @@ fn parse_args() -> clap::ArgMatches<'static> {
             .help("Specifies where to find shared files")
             .required(false))
         .arg(clap::Arg::with_name("interactive")
-            .short("i")
+            .short('i')
             .long("interactive")
             .help("Interactive response of accepting the generated pass")
             .required(false));
@@ -200,7 +200,7 @@ fn parse_args() -> clap::ArgMatches<'static> {
     {
         arg_build = arg_build
             .arg(clap::Arg::with_name("qrcode")
-            .short("q")
+            .short('q')
             .long("qr-code")
             .help("Generate and display a QR code representation of the generated pass")
             .required(false)

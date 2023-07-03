@@ -1,13 +1,13 @@
 [package]
 name = "genpwd"
 version = "1.0.0"
-edition = "2018"
+edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
 rand = "0.8.4"
-clap = "4.0.18"
+clap = "3"
 
 [dependencies.qr_code]
 version = "1.1.0"
