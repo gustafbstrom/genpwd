@@ -53,8 +53,8 @@ fn parse_config(path: &str) -> HashMap<String, String> {
             panic!("Malformed config on line {}", idx);
         }
         
-        let key = String::from(key_val[0].trim().clone());
-        let val = String::from(key_val[1].trim().clone());
+        let key = String::from(key_val[0].trim());
+        let val = String::from(key_val[1].trim());
         if hm.contains_key(&key) {
             panic!("Double config on line {}", idx);
         }
