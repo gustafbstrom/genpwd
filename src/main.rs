@@ -2,9 +2,9 @@ use std::io;
 use std::io::*;
 use std::fs::File;
 use std::path::Path;
-use std::collections::HashMap;
 use rand::Rng;
 use clap::{self,ArgMatches};
+use toml::Table;
 
 #[cfg(feature = "default")]
 use sdl2::event::Event;
@@ -13,8 +13,7 @@ use sdl2::event::Event;
 use qr_code;
 
 fn import_word_list(path: &str) -> Vec<String> {
-    let path = format!("{}/wordlist", path);
-    let path = Path::new(path.as_str());
+    let path = Path::new(path).join("wordlist");
     let display = path.display();
     let file = match File::open(&path) {
         Err(why) => panic!("couldn't open {}: {}", display, why),
@@ -28,45 +27,26 @@ fn import_word_list(path: &str) -> Vec<String> {
         .collect()
 }
 
-fn parse_config(path: &str) -> HashMap<String, String> {
-    let path = format!("{}/config", path);
+fn parse_config(path: &str) -> toml::map::Map<String, toml::Value> {
+    let path = format!("{}/config.toml", path);
     let path = Path::new(&path);
     let file = match File::open(&path) {
         Ok(file) => file,
-        Err(_) => return HashMap::new(),
+        Err(_) => return toml::map::Map::new(),
     };
 
-    let buffered = BufReader::new(file);
-    let lines : Vec<String> = buffered
-        .lines()
-        .map(|word| word.unwrap()) //.split("=").collect())
-        .collect();
-    
-    let key_vals : Vec<Vec<String>> = lines
-        .into_iter()
-        .map(|word| word.split("=").map(|s| String::from(s)).collect())
-        .collect();
+    let mut buffered = BufReader::new(file);
+    let mut buf = String::new();
+    buffered.read_to_string(&mut buf).unwrap();
+    let toml_config = buf.parse::<Table>().unwrap();
 
-    let mut hm = HashMap::new();
-    for (idx, key_val) in key_vals.iter().enumerate() {
-        if key_val.len() != 2 {
-            panic!("Malformed config on line {}", idx);
-        }
-        
-        let key = String::from(key_val[0].trim());
-        let val = String::from(key_val[1].trim());
-        if hm.contains_key(&key) {
-            panic!("Double config on line {}", idx);
-        }
-        hm.insert(key, val);
-    }
-
-    hm
+    toml_config
 }
 
 struct PassGen {
     word_list: Vec<String>,
     rng: rand::rngs::ThreadRng,
+    current_pass: String,
 }
 
 impl PassGen {
@@ -74,6 +54,7 @@ impl PassGen {
         Self {
             word_list: import_word_list(wl_path),
             rng: rand::thread_rng(),
+            current_pass: String::new(),
         }
     }
 
@@ -90,16 +71,25 @@ impl PassGen {
         pass
     }
 
-    pub fn generate_pass(&mut self, n_words: u32, prefix: &Option<String>, suffix: &Option<String>) -> String {
-        let mut pass = String::new();
-        if let Some(s) = prefix {
-            pass += &s;
-        }
-        pass += &self.generate_words(n_words);
-        if let Some(s) = suffix {
-            pass += &s;
-        }
-        pass
+    pub fn generate_new_pass(&mut self, n_words: u32, prefix: &Option<String>, suffix: &Option<String>) {
+        let prefix_str = match prefix {
+            Some(s) => s,
+            None => "",
+        };
+        let suffix_str = match suffix {
+            Some(s) => s,
+            None => "",
+        };
+
+        // If prefix_str has to be cloned to make this work, then this is
+        // really stupid...
+        self.current_pass = prefix_str.to_owned()
+            + &self.generate_words(n_words)
+            + suffix_str;
+    }
+
+    pub fn view_current_pass(&self) -> &str {
+        &self.current_pass
     }
 
     pub fn get_user_input(&mut self) -> bool {
@@ -209,31 +199,41 @@ fn parse_args() -> clap::ArgMatches {
 
     arg_build.get_matches()
 }
-    
-fn main() {
+
+fn run() {
     fn get_conf_val(args: &ArgMatches,
-                    config: &HashMap<String, String>,
+                    config: &toml::map::Map<String, toml::Value>,
                     key: &str) -> Option<String> {
         if args.is_present(key) {
             Some(args.value_of(key).unwrap().replace(" ", "_"))
         }
         else if config.contains_key(key.to_uppercase().as_str()) {
-            let val = config.get(key.to_uppercase().as_str()).unwrap();
-            Some(String::from(val)) // Already wrapped in an Option
+            let val = config
+                .get(key.to_uppercase().as_str())
+                .unwrap()
+                .as_str()
+                .unwrap()
+                .to_string();
+            Some(val)
         }
         else {
             None
         }
     }
+
     let args = parse_args();
     let words = args
         .value_of("n_words")
         .unwrap()
         .parse::<u32>()
         .unwrap();
-    let mut pass: String;
-    let shared_path = format!("{}/.config/genpwd",
-                       std::env::var("HOME").unwrap());
+    let home_path = &std::env::var("HOME").unwrap();
+    let shared_path = std::path::Path::new(home_path)
+        .join(".config")
+        .join("genpwd")
+        .to_str()
+        .unwrap()
+        .to_string();
     let config = parse_config(shared_path.as_str());
     let prefix = get_conf_val(&args, &config, "prefix");
     let suffix = get_conf_val(&args, &config, "suffix");
@@ -244,17 +244,21 @@ fn main() {
     let mut pwd_gen = PassGen::new(wl_path.unwrap().as_str());
 
     loop {
-        pass = pwd_gen.generate_pass(words, &prefix, &suffix);
-        println!("{}", pass);
+        pwd_gen.generate_new_pass(words, &prefix, &suffix);
+        let new_pass = pwd_gen.view_current_pass();
+        println!("{}", new_pass);
         if !args.is_present("interactive") || pwd_gen.get_user_input() {
             break;
         }
-        pass.clear();
     }
 
     #[cfg(feature = "default")]
     if args.is_present("qrcode") {
-        let qc = gen_qr_code(&pass);
+        let qc = gen_qr_code(pwd_gen.view_current_pass());
         show_qr_code(&qc);
     }
+}
+
+fn main() {
+    run()
 }

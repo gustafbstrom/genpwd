@@ -8,14 +8,16 @@ edition = "2021"
 [dependencies]
 rand = "0.8.4"
 clap = "3"
+toml = "0.8.19"
+serde = "1.0"
 
 [dependencies.qr_code]
-version = "1.1.0"
+version = "2.0.0"
 optional = true
 features = ["bmp"]
 
 [dependencies.sdl2]
-version = "0.35.1"
+version = "0.37.0"
 optional = true
 features = ["image"]
 
