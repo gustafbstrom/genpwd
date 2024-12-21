@@ -3,7 +3,7 @@ use std::io::*;
 use std::fs::File;
 use std::path::Path;
 use rand::Rng;
-use clap::{self,ArgMatches};
+use clap::{self, value_parser, ArgAction, ArgMatches};
 use toml::Table;
 
 #[cfg(feature = "default")]
@@ -156,45 +156,51 @@ fn show_qr_code(qc: &qr_code::QrCode) {
 }
 
 fn parse_args() -> clap::ArgMatches {
-    let mut arg_build = clap::App::new("genpwd")
+    let mut arg_build = clap::Command::new("genpwd")
         .version("1.0")
         .author("Gustaf Borgstrom <gustaf.borgstrom@koltrast.se>")
         .about("Generate easy to comprehend, hard to crack passwords.")
-        .arg(clap::Arg::with_name("n_words")
+        .arg(clap::Arg::new("n_words")
             .short('w')
             .long("words")
             .help("Number of words to include")
             .required(false)
-            .default_value("3"))
-        .arg(clap::Arg::with_name("prefix")
+            .value_parser(value_parser!(u32))
+            .default_value("3")
+        )
+        .arg(clap::Arg::new("prefix")
             .long("prefix")
-            .takes_value(true)
             .help("Fixed prefix before the generated password")
-            .required(false))
-        .arg(clap::Arg::with_name("suffix")
+            .required(false)
+        )
+        .arg(clap::Arg::new("suffix")
             .long("suffix")
-            .takes_value(true)
             .help("Fixed suffix after the generated password")
-            .required(false))
-        .arg(clap::Arg::with_name("shared_path")
+            .required(false)
+        )
+        .arg(clap::Arg::new("shared_path")
             .long("shared-path")
             .help("Specifies where to find shared files")
-            .required(false))
-        .arg(clap::Arg::with_name("interactive")
+            .required(false)
+        )
+        .arg(clap::Arg::new("interactive")
             .short('i')
             .long("interactive")
             .help("Interactive response of accepting the generated pass")
-            .required(false));
+            .required(false)
+            .action(ArgAction::SetTrue)
+        );
 
     #[cfg(feature = "default")]
     {
         arg_build = arg_build
-            .arg(clap::Arg::with_name("qrcode")
+            .arg(clap::Arg::new("qrcode")
             .short('q')
             .long("qr-code")
             .help("Generate and display a QR code representation of the generated pass")
             .required(false)
-            .takes_value(false));
+            .action(ArgAction::SetTrue)
+        );
     }
 
     arg_build.get_matches()
@@ -204,8 +210,8 @@ fn run() {
     fn get_conf_val(args: &ArgMatches,
                     config: &toml::map::Map<String, toml::Value>,
                     key: &str) -> Option<String> {
-        if args.is_present(key) {
-            Some(args.value_of(key).unwrap().replace(" ", "_"))
+        if args.contains_id(key) {
+            Some(args.get_one::<String>(key).unwrap().replace(" ", "_"))
         }
         else if config.contains_key(key.to_uppercase().as_str()) {
             let val = config
@@ -222,38 +228,37 @@ fn run() {
     }
 
     let args = parse_args();
-    let words = args
-        .value_of("n_words")
-        .unwrap()
-        .parse::<u32>()
-        .unwrap();
-    let home_path = &std::env::var("HOME").unwrap();
-    let shared_path = std::path::Path::new(home_path)
+
+    let n_words = *args.get_one::<u32>("n_words").unwrap();
+
+    // TODO: this might be better to not hardcode or at least respect different
+    // OS:es and systems
+    let home_path = std::env::var("HOME").unwrap();
+    let shared_path = std::path::Path::new(&home_path)
         .join(".config")
-        .join("genpwd")
-        .to_str()
-        .unwrap()
-        .to_string();
-    let config = parse_config(shared_path.as_str());
+        .join("genpwd");
+    let config = parse_config(shared_path.to_str().unwrap());
+
+    // Populate the password generator with the word list
+    let wl_path = get_conf_val(&args, &config, "shared_path")
+        .unwrap_or_else(|| shared_path.to_str().unwrap().to_string());
+    let mut pwd_gen = PassGen::new(&wl_path);
+
+    // Generate the password(s)
     let prefix = get_conf_val(&args, &config, "prefix");
     let suffix = get_conf_val(&args, &config, "suffix");
-    let mut wl_path = get_conf_val(&args, &config, "shared_path");
-    if wl_path.is_none() {
-        wl_path = Some(shared_path);
-    }
-    let mut pwd_gen = PassGen::new(wl_path.unwrap().as_str());
-
+    let is_interactive = args.get_one::<bool>("interactive").unwrap();
     loop {
-        pwd_gen.generate_new_pass(words, &prefix, &suffix);
+        pwd_gen.generate_new_pass(n_words, &prefix, &suffix);
         let new_pass = pwd_gen.view_current_pass();
         println!("{}", new_pass);
-        if !args.is_present("interactive") || pwd_gen.get_user_input() {
+        if !is_interactive || pwd_gen.get_user_input() {
             break;
         }
     }
 
     #[cfg(feature = "default")]
-    if args.is_present("qrcode") {
+    if *args.get_one::<bool>("qrcode").unwrap() {
         let qc = gen_qr_code(pwd_gen.view_current_pass());
         show_qr_code(&qc);
     }
