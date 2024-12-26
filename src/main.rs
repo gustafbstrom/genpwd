@@ -1,31 +1,17 @@
-use std::io;
-use std::io::*;
+use std::io::{Read, BufReader};
 use std::fs::File;
 use std::path::Path;
-use rand::Rng;
-use clap::{self, value_parser, ArgAction, ArgMatches};
+use clap;
 use toml::Table;
+use crate::passgen::passgen::PassGen;
+
+pub mod passgen;
 
 #[cfg(feature = "default")]
 use sdl2::event::Event;
 
 #[cfg(feature = "default")]
 use qr_code;
-
-fn import_word_list(path: &str) -> Vec<String> {
-    let path = Path::new(path).join("wordlist");
-    let display = path.display();
-    let file = match File::open(&path) {
-        Err(why) => panic!("couldn't open {}: {}", display, why),
-        Ok(file) => file,
-    };
-    let buffered = BufReader::new(file);
-    
-    buffered
-        .lines()
-        .map(|word| word.unwrap())
-        .collect()
-}
 
 fn parse_config(path: &str) -> toml::map::Map<String, toml::Value> {
     let path = format!("{}/config.toml", path);
@@ -43,74 +29,6 @@ fn parse_config(path: &str) -> toml::map::Map<String, toml::Value> {
     toml_config
 }
 
-struct PassGen {
-    word_list: Vec<String>,
-    rng: rand::rngs::ThreadRng,
-    current_pass: String,
-}
-
-impl PassGen {
-    pub fn new(wl_path: &str) -> Self {
-        Self {
-            word_list: import_word_list(wl_path),
-            rng: rand::thread_rng(),
-            current_pass: String::new(),
-        }
-    }
-
-    fn generate_words(&mut self, n_words: u32) -> String {
-        let mut pass = String::new();
-        for _ in 0..n_words {
-            let i = self.rng.gen::<usize>() % self.word_list.len();
-            let mut tmp_str = self.word_list[i].clone();
-            if let Some(r) = tmp_str.get_mut(0..1) {
-                r.make_ascii_uppercase();
-            }
-            pass += &tmp_str;
-        }
-        pass
-    }
-
-    pub fn generate_new_pass(&mut self, n_words: u32, prefix: &Option<String>, suffix: &Option<String>) {
-        let prefix_str = match prefix {
-            Some(s) => s,
-            None => "",
-        };
-        let suffix_str = match suffix {
-            Some(s) => s,
-            None => "",
-        };
-
-        // If prefix_str has to be cloned to make this work, then this is
-        // really stupid...
-        self.current_pass = prefix_str.to_owned()
-            + &self.generate_words(n_words)
-            + suffix_str;
-    }
-
-    pub fn view_current_pass(&self) -> &str {
-        &self.current_pass
-    }
-
-    pub fn get_user_input(&mut self) -> bool {
-        let mut input = String::new();
-        let stdin = io::stdin();
-        loop {
-            print!("Ok? (y/n): ");
-            io::stdout().flush().unwrap();
-            stdin
-                .read_line(&mut input)
-                .expect("Error: unable to read user input");
-            match input.trim() {
-                "y" => return true,
-                "n" => return false,
-                _ => (),
-            }
-            input.clear();
-        }
-    }
-}
-
 #[cfg(feature = "default")]
 fn gen_qr_code(pass: &str) -> qr_code::QrCode {
     let qc = qr_code::QrCode::new(pass);
@@ -118,7 +36,7 @@ fn gen_qr_code(pass: &str) -> qr_code::QrCode {
 }
 
 #[cfg(feature = "default")]
-fn show_qr_code(qc: &qr_code::QrCode) {
+fn render_display_qr_code(qc: &qr_code::QrCode) {
     let mut qc_v = Vec::new();
     qc.to_bmp().write(&mut qc_v).unwrap();
 
@@ -165,7 +83,7 @@ fn parse_args() -> clap::ArgMatches {
             .long("words")
             .help("Number of words to include")
             .required(false)
-            .value_parser(value_parser!(u32))
+            .value_parser(clap::value_parser!(u32))
             .default_value("3")
         )
         .arg(clap::Arg::new("prefix")
@@ -188,7 +106,7 @@ fn parse_args() -> clap::ArgMatches {
             .long("interactive")
             .help("Interactive response of accepting the generated pass")
             .required(false)
-            .action(ArgAction::SetTrue)
+            .action(clap::ArgAction::SetTrue)
         );
 
     #[cfg(feature = "default")]
@@ -199,7 +117,7 @@ fn parse_args() -> clap::ArgMatches {
             .long("qr-code")
             .help("Generate and display a QR code representation of the generated pass")
             .required(false)
-            .action(ArgAction::SetTrue)
+            .action(clap::ArgAction::SetTrue)
         );
     }
 
@@ -207,7 +125,8 @@ fn parse_args() -> clap::ArgMatches {
 }
 
 fn run() {
-    fn get_conf_val(args: &ArgMatches,
+    // Precedence: cmd line flag, else config file, else none
+    fn get_conf_val(args: &clap::ArgMatches,
                     config: &toml::map::Map<String, toml::Value>,
                     key: &str) -> Option<String> {
         if args.contains_id(key) {
@@ -258,9 +177,12 @@ fn run() {
     }
 
     #[cfg(feature = "default")]
-    if *args.get_one::<bool>("qrcode").unwrap() {
-        let qc = gen_qr_code(pwd_gen.view_current_pass());
-        show_qr_code(&qc);
+    {
+        let show_qr_code = *args.get_one::<bool>("qrcode").unwrap();
+        if show_qr_code {
+            let qc = gen_qr_code(pwd_gen.view_current_pass());
+            render_display_qr_code(&qc);
+        }
     }
 }
 
