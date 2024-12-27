@@ -1,7 +1,6 @@
 pub mod passgen {
+    use std::io::{BufRead, BufReader};
     use rand::Rng;
-    use std::io;
-    use std::io::*;
     use std::path::Path;
     use std::fs::File;
 
@@ -65,25 +64,6 @@ pub mod passgen {
 
         pub fn view_current_pass(&self) -> &str {
             &self.current_pass
-        }
-
-        // TODO: consider moving this out, it does not look like it belongs here
-        pub fn get_user_input(&mut self) -> bool {
-            let mut input = String::new();
-            let stdin = io::stdin();
-            loop {
-                print!("Ok? (y/n): ");
-                io::stdout().flush().unwrap();
-                stdin
-                    .read_line(&mut input)
-                    .expect("Error: unable to read user input");
-                match input.trim() {
-                    "y" => return true,
-                    "n" => return false,
-                    _ => (),
-                }
-                input.clear();
-            }
         }
     }
 }

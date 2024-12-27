@@ -1,11 +1,12 @@
 use std::io::{Read, BufReader};
 use std::fs::File;
 use std::path::Path;
+use std::io::{self, Write};
 use clap;
 use toml::Table;
 use crate::passgen::passgen::PassGen;
 
-pub mod passgen;
+mod passgen;
 
 #[cfg(feature = "default")]
 use sdl2::event::Event;
@@ -70,6 +71,24 @@ fn render_display_qr_code(qc: &qr_code::QrCode) {
                 _ => {}
             }
         }
+    }
+}
+
+fn get_user_input() -> bool {
+    let mut input = String::new();
+    let stdin = io::stdin();
+    loop {
+        print!("Ok? (y/n): ");
+        io::stdout().flush().unwrap();
+        stdin
+            .read_line(&mut input)
+            .expect("Error: unable to read user input");
+        match input.trim() {
+            "y" => return true,
+            "n" => return false,
+            _ => (),
+        }
+        input.clear();
     }
 }
 
@@ -171,7 +190,7 @@ fn run() {
         pwd_gen.generate_new_pass(n_words, &prefix, &suffix);
         let new_pass = pwd_gen.view_current_pass();
         println!("{}", new_pass);
-        if !is_interactive || pwd_gen.get_user_input() {
+        if !is_interactive || get_user_input() == true {
             break;
         }
     }
